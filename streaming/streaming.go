@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitx/bitx-go"
+	"github.com/francoishill/bitx-go"
 	"golang.org/x/net/websocket"
 )
 
