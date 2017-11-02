@@ -407,6 +407,13 @@ func (c *Conn) processDelete(u deleteUpdate) error {
 	return nil
 }
 
+// OrderBookSeq returns the latest order book sequence.
+func (c *Conn) OrderBookSeq() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.seq
+}
+
 // OrderBookSnapshot returns the latest order book.
 func (c *Conn) OrderBookSnapshot() (int64, []bitx.OrderBookEntry, []bitx.OrderBookEntry) {
 	c.mu.Lock()
