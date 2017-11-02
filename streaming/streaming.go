@@ -117,6 +117,15 @@ func flattenGroupByPriceSumVolume(m map[string]order, reverse bool) []OrderBookE
 	return ol
 }
 
+//OnTradeAppliedEvent is used when executing Trades (buy/sell)
+type OnTradeAppliedEvent func(orderID string, price, base float64, isBuy bool, timestamp time.Time)
+
+//OnOrderCreatedEvent is used when an order is Created
+type OnOrderCreatedEvent func(orderID string, price, volume float64, orderType bitx.OrderType, timestamp time.Time)
+
+//OnOrderDeletedEvent is used when an order is Deleted
+type OnOrderDeletedEvent func(orderID string, price, volume float64, orderType bitx.OrderType, timestamp time.Time)
+
 type Conn struct {
 	keyID, keySecret string
 	pair             string
@@ -129,6 +138,10 @@ type Conn struct {
 	asks map[string]order
 
 	lastMessage time.Time
+
+	OnTradeApplied OnTradeAppliedEvent
+	OnOrderCreated OnOrderCreatedEvent
+	OnOrderDeleted OnOrderDeletedEvent
 
 	mu sync.Mutex
 }
@@ -305,23 +318,25 @@ func (c *Conn) receivedUpdate(u update) error {
 		return errors.New("update received out of sequence")
 	}
 
+	timestamp := time.Unix(0, u.Timestamp*1e6)
+
 	// Process trades
 	for _, t := range u.TradeUpdates {
-		if err := c.processTrade(*t); err != nil {
+		if err := c.processTrade(*t, timestamp); err != nil {
 			return err
 		}
 	}
 
 	// Process create
 	if u.CreateUpdate != nil {
-		if err := c.processCreate(*u.CreateUpdate); err != nil {
+		if err := c.processCreate(*u.CreateUpdate, timestamp); err != nil {
 			return err
 		}
 	}
 
 	// Process delete
 	if u.DeleteUpdate != nil {
-		if err := c.processDelete(*u.DeleteUpdate); err != nil {
+		if err := c.processDelete(*u.DeleteUpdate, timestamp); err != nil {
 			return err
 		}
 	}
@@ -339,7 +354,7 @@ func addD8(a, b float64) float64 {
 	return float64(int64(s*1e8+0.5)) / 1e8
 }
 
-func decTrade(m map[string]order, id string, base float64) (bool, error) {
+func decTrade(m map[string]order, isBuy bool, timestamp time.Time, id string, base float64, onTradeApplied OnTradeAppliedEvent) (bool, error) {
 	o, ok := m[id]
 	if !ok {
 		return false, nil
@@ -356,15 +371,20 @@ func decTrade(m map[string]order, id string, base float64) (bool, error) {
 	} else {
 		m[id] = o
 	}
+
+	if onTradeApplied != nil {
+		onTradeApplied(o.ID, o.Price, base, isBuy, timestamp)
+	}
+
 	return true, nil
 }
 
-func (c *Conn) processTrade(t tradeUpdate) error {
+func (c *Conn) processTrade(t tradeUpdate, timestamp time.Time) error {
 	if t.Base <= 0 {
 		return errors.New("nonpositive trade")
 	}
 
-	ok, err := decTrade(c.bids, t.OrderID, t.Base)
+	ok, err := decTrade(c.bids, true, timestamp, t.OrderID, t.Base, c.OnTradeApplied)
 	if err != nil {
 		return err
 	}
@@ -372,7 +392,7 @@ func (c *Conn) processTrade(t tradeUpdate) error {
 		return nil
 	}
 
-	ok, err = decTrade(c.asks, t.OrderID, t.Base)
+	ok, err = decTrade(c.asks, false, timestamp, t.OrderID, t.Base, c.OnTradeApplied)
 	if err != nil {
 		return err
 	}
@@ -383,7 +403,7 @@ func (c *Conn) processTrade(t tradeUpdate) error {
 	return errors.New("trade for unknown order")
 }
 
-func (c *Conn) processCreate(u createUpdate) error {
+func (c *Conn) processCreate(u createUpdate, timestamp time.Time) error {
 	o := order{
 		ID:     u.OrderID,
 		Price:  u.Price,
@@ -398,12 +418,28 @@ func (c *Conn) processCreate(u createUpdate) error {
 		return errors.New("unknown order type")
 	}
 
+	if c.OnOrderCreated != nil {
+		c.OnOrderCreated(u.OrderID, u.Price, u.Volume, bitx.BID, timestamp)
+	}
+
 	return nil
 }
 
-func (c *Conn) processDelete(u deleteUpdate) error {
+func (c *Conn) processDelete(u deleteUpdate, timestamp time.Time) error {
+	if b, ok := c.bids[u.OrderID]; ok {
+		if c.OnOrderDeleted != nil {
+			defer c.OnOrderDeleted(u.OrderID, b.Price, b.Volume, bitx.BID, timestamp)
+		}
+	}
+	if a, ok := c.asks[u.OrderID]; ok {
+		if c.OnOrderDeleted != nil {
+			defer c.OnOrderDeleted(u.OrderID, a.Price, a.Volume, bitx.ASK, timestamp)
+		}
+	}
+
 	delete(c.bids, u.OrderID)
 	delete(c.asks, u.OrderID)
+
 	return nil
 }
 
