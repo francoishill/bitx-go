@@ -52,6 +52,18 @@ func (ol orderList) Len() int {
 	return len(ol)
 }
 
+type orderListGroup []OrderBookEntryGroup
+
+func (ol orderListGroup) Less(i, j int) bool {
+	return ol[i].Price < ol[j].Price
+}
+func (ol orderListGroup) Swap(i, j int) {
+	ol[i], ol[j] = ol[j], ol[i]
+}
+func (ol orderListGroup) Len() int {
+	return len(ol)
+}
+
 func flatten(m map[string]order, reverse bool) []bitx.OrderBookEntry {
 	var ol []bitx.OrderBookEntry
 	for _, o := range m {
@@ -64,6 +76,43 @@ func flatten(m map[string]order, reverse bool) []bitx.OrderBookEntry {
 		sort.Sort(sort.Reverse(orderList(ol)))
 	} else {
 		sort.Sort(orderList(ol))
+	}
+	return ol
+}
+
+type OrderBookEntryGroup struct {
+	Price, Volume float64
+	Count         int64
+}
+
+func flattenGroupByPriceSumVolume(m map[string]order, reverse bool) []OrderBookEntryGroup {
+	priceVolMap := make(map[int64]float64)
+	priceCountMap := make(map[int64]int64)
+	for _, o := range m {
+		priceInt := int64(o.Price)
+		existingVolSum, ok := priceVolMap[priceInt]
+		if !ok {
+			priceVolMap[priceInt] = o.Volume
+			priceCountMap[priceInt] = 1
+			continue
+		}
+
+		priceVolMap[priceInt] = existingVolSum + o.Volume
+		priceCountMap[priceInt]++
+	}
+
+	var ol []OrderBookEntryGroup
+	for price, vol := range priceVolMap {
+		ol = append(ol, OrderBookEntryGroup{
+			Price:  float64(price),
+			Volume: vol,
+			Count:  priceCountMap[price],
+		})
+	}
+	if reverse {
+		sort.Sort(sort.Reverse(orderListGroup(ol)))
+	} else {
+		sort.Sort(orderListGroup(ol))
 	}
 	return ol
 }
@@ -365,6 +414,16 @@ func (c *Conn) OrderBookSnapshot() (int64, []bitx.OrderBookEntry, []bitx.OrderBo
 
 	bids := flatten(c.bids, true)
 	asks := flatten(c.asks, false)
+	return c.seq, bids, asks
+}
+
+// OrderBookSnapshotGroupByPriceSumVolume returns the latest order book with same prices grouped and summing the volumes.
+func (c *Conn) OrderBookSnapshotGroupByPriceSumVolume() (int64, []OrderBookEntryGroup, []OrderBookEntryGroup) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	bids := flattenGroupByPriceSumVolume(c.bids, true)
+	asks := flattenGroupByPriceSumVolume(c.asks, false)
 	return c.seq, bids, asks
 }
 
