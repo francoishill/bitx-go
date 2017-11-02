@@ -184,6 +184,7 @@ func (c *Client) OrderBook(pair string) (
 
 type trade struct {
 	Timestamp int64  `json:"timestamp"`
+	IsBuy     bool   `json:"is_buy"`
 	Price     string `json:"price"`
 	Volume    string `json:"volume"`
 }
@@ -195,6 +196,7 @@ type trades struct {
 
 type Trade struct {
 	Timestamp     time.Time
+	IsBuy         bool
 	Price, Volume float64
 }
 
@@ -214,6 +216,7 @@ func (c *Client) Trades(pair string) ([]Trade, error) {
 		tr[i].Timestamp = time.Unix(t.Timestamp/1000, 0)
 		price, _ := strconv.ParseFloat(t.Price, 64)
 		volume, _ := strconv.ParseFloat(t.Volume, 64)
+		tr[i].IsBuy = t.IsBuy
 		tr[i].Price = price
 		tr[i].Volume = volume
 	}
