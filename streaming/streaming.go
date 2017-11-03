@@ -32,6 +32,10 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+var (
+	wsHost = flag.String("luno_websocket_host", "wss://ws.luno.com", "Luno API websocket host")
+)
+
 func convertOrders(ol []*order) (map[string]order, error) {
 	r := make(map[string]order)
 	for _, o := range ol {
@@ -158,9 +162,6 @@ func Dial(keyID, keySecret, pair string) (*Conn, error) {
 	go c.manageForever()
 	return c, nil
 }
-
-var wsHost = flag.String(
-	"luno_websocket_host", "wss://ws.luno.com", "Luno API websocket host")
 
 func (c *Conn) manageForever() {
 	attempts := 0
