@@ -3,10 +3,8 @@ Package streaming implements a client for the Luno Streaming API.
 
 Example:
 
-	c, err := streaming.Dial(keyID, keySecret, "XBTZAR")
-	if err != nil {
-		log.Fatal(err)
-	}
+	c := streaming.NewConn(keyID, keySecret, "XBTZAR")
+	c.ManageForever()
 	defer c.Close()
 
 	for {
@@ -150,20 +148,18 @@ type Conn struct {
 	mu sync.Mutex
 }
 
-// Dial initiates a connection to the streaming service and starts processing
-// data for the given market pair.
-// The connection will automatically reconnect on error.
-func Dial(keyID, keySecret, pair string) (*Conn, error) {
-	c := &Conn{
+// NewConn initiates a connection to the streaming service for the given market pair
+func NewConn(keyID, keySecret, pair string) *Conn {
+	return &Conn{
 		keyID:     keyID,
 		keySecret: keySecret,
 		pair:      pair,
 	}
-	go c.manageForever()
-	return c, nil
 }
 
-func (c *Conn) manageForever() {
+// ManageForever starts processing data for the connection.
+// The connection will automatically reconnect on error.
+func (c *Conn) ManageForever(onConnectionError func(err error)) {
 	attempts := 0
 	var lastAttempt time.Time
 	for {
@@ -177,7 +173,10 @@ func (c *Conn) manageForever() {
 		lastAttempt = time.Now()
 		attempts++
 		if err := c.connect(); err != nil {
-			log.Printf("bitx-go/streaming: Connection error key=%s pair=%s: %v", c.keyID, c.pair, err)
+			log.Printf("bitx-go/streaming: Connection error key=%s pair=%s: %+v", c.keyID, c.pair, err)
+			if onConnectionError != nil {
+				onConnectionError(err)
+			}
 		}
 
 		if time.Now().Sub(lastAttempt) > time.Hour {
