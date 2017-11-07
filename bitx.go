@@ -637,3 +637,40 @@ func (c *Client) ListTrades(pair string, since int64) ([]OrderTrade, error) {
 	}
 	return resp.Trades, nil
 }
+
+type Transaction struct {
+	RowIndex       int64   `json:"row_index,omitempty"`
+	Timestamp      int64   `json:"timestamp,omitempty"`
+	Balance        float64 `json:"balance,omitempty"`
+	Available      float64 `json:"available,omitempty"`
+	AccountID      string  `json:"account_id,omitempty"`
+	BalanceDelta   float64 `json:"balance_delta,omitempty"`
+	AvailableDelta float64 `json:"available_delta,omitempty"`
+	Currency       string  `json:"currency,omitempty"`
+	Description    string  `json:"description,omitempty"`
+	Details        struct {
+		Price            string `json:"price,omitempty"`
+		Address          string `json:"address,omitempty"`
+		ApproximateValue string `json:"Approximate value,omitempty"`
+		Message          string `json:"message,omitempty"`
+	} `json:"details,omitempty"`
+}
+
+type transactionResp struct {
+	Transactions []Transaction `json:"transactions"`
+}
+
+//Transactions returns transactions of the given account ID between the
+//given min (inclusive) and max (exclusive) rows
+func (c *Client) Transactions(accountID string, minRow, maxRow int) ([]Transaction, error) {
+	params := url.Values{
+		"min_row": {strconv.FormatInt(int64(minRow), 10)},
+		"max_row": {strconv.FormatInt(int64(maxRow), 10)},
+	}
+	var resp transactionResp
+	err := c.call("GET", fmt.Sprintf("/api/1/accounts/%s/transactions", accountID), params, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Transactions, nil
+}
