@@ -4,7 +4,7 @@ Package streaming implements a client for the Luno Streaming API.
 Example:
 
 	c := streaming.NewConn(keyID, keySecret, "XBTZAR")
-	c.ManageForever()
+	go c.ManageForever()
 	defer c.Close()
 
 	for {
